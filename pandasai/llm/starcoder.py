@@ -15,7 +15,8 @@ class Starcoder(HuggingFaceLLM):
     """Starcoder LLM"""
 
     api_token: str
-    _api_url: str = "https://api-inference.huggingface.co/models/bigcode/starcoder"
+   # _api_url: str = "https://api-inference.huggingface.co/models/bigcode/starcoder"
+   _api_url: str = "https://api-inference.huggingface.co/models/bigcode/starcoder"
     _max_retries: int = 5
 
     def __init__(self, api_token: Optional[str] = None):
