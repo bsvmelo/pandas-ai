@@ -18,7 +18,7 @@ class OpenAssistant(HuggingFaceLLM):
     _api_url: str = (
         "https://api-inference.huggingface.co/models/"
         #"OpenAssistant/oasst-sft-1-pythia-12b"
-        "OpenAssistant/pythia-12b-sft-v8-7k-steps"
+        "databricks/dolly-v2-12b"
     )
     _max_retries: int = 10
 
