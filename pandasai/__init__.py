@@ -1,55 +1,28 @@
 """ PandasAI is a wrapper around a LLM to make dataframes convesational """
+import ast
 import io
+import re
 from contextlib import redirect_stdout
-from datetime import date
 from typing import Optional
 
+import astor
+import matplotlib.pyplot as plt
 import pandas as pd
 
-from .constants import END_CODE_TAG, START_CODE_TAG
+from .constants import WHITELISTED_BUILTINS, WHITELISTED_LIBRARIES
 from .exceptions import LLMNotFoundError
 from .helpers.anonymizer import anonymize_dataframe_head
 from .helpers.notebook import Notebook
 from .llm.base import LLM
+from .prompts.correct_error_prompt import CorrectErrorPrompt
+from .prompts.generate_python_code import GeneratePythonCodePrompt
+from .prompts.generate_response import GenerateResponsePrompt
 
 
 # pylint: disable=too-many-instance-attributes disable=too-many-arguments
 class PandasAI:
     """PandasAI is a wrapper around a LLM to make dataframes conversational"""
 
-    _task_instruction: str = """
-Today is {today_date}.
-You are provided with a pandas dataframe (df) with {num_rows} rows and {num_columns} columns.
-This is the result of `print(df.head({rows_to_display}))`:
-{df_head}.
-
-Return the python code (do not import anything) and make sure to prefix the requested python code with {START_CODE_TAG} exactly and suffix the code with {END_CODE_TAG} exactly to get the answer to the following question:
-"""
-    _response_instruction: str = """
-Question: {question}
-Answer: {answer}
-
-Rewrite the answer to the question in a conversational way.
-"""
-
-    _error_correct_instruction: str = """
-Today is {today_date}.
-You are provided with a pandas dataframe (df) with {num_rows} rows and {num_columns} columns.
-This is the result of `print(df.head({rows_to_display}))`:
-{df_head}.
-
-The user asked the following question:
-{question}
-
-You generated this python code:
-{code}
-
-It fails with the following error:
-{error_returned}
-
-Correct the python code and return a new python code (do not import anything) that fixes the above mentioned error. Do not generate the same code again.
-Make sure to prefix the requested python code with {START_CODE_TAG} exactly and suffix the code with {END_CODE_TAG} exactly.
-    """
     _llm: LLM
     _verbose: bool = False
     _is_conversational_answer: bool = True
@@ -64,6 +37,7 @@ Make sure to prefix the requested python code with {START_CODE_TAG} exactly and 
         "rows_to_display": None,
     }
     last_code_generated: Optional[str] = None
+    last_run_code: Optional[str] = None
     code_output: Optional[str] = None
 
     def __init__(
@@ -85,16 +59,14 @@ Make sure to prefix the requested python code with {START_CODE_TAG} exactly and 
         self.notebook = Notebook()
         self._in_notebook = self.notebook.in_notebook()
 
-    def conversational_answer(self, question: str, code: str, answer: str) -> str:
+    def conversational_answer(self, question: str, answer: str) -> str:
         """Return the conversational answer"""
         if self._enforce_privacy:
             # we don't want to send potentially sensitive data to the LLM server
             # if the user has set enforce_privacy to True
             return answer
 
-        instruction = self._response_instruction.format(
-            question=question, code=code, answer=answer
-        )
+        instruction = GenerateResponsePrompt(question=question, answer=answer)
         return self._llm.call(instruction, "")
 
     def run(
@@ -116,14 +88,12 @@ Make sure to prefix the requested python code with {START_CODE_TAG} exactly and 
             df_head = anonymize_dataframe_head(df_head)
 
         code = self._llm.generate_code(
-            self._task_instruction.format(
-                today_date=date.today(),
+            GeneratePythonCodePrompt(
+                prompt=prompt,
                 df_head=df_head,
                 num_rows=data_frame.shape[0],
                 num_columns=data_frame.shape[1],
                 rows_to_display=rows_to_display,
-                START_CODE_TAG=START_CODE_TAG,
-                END_CODE_TAG=END_CODE_TAG,
             ),
             prompt,
         )
@@ -156,27 +126,108 @@ Code generated:
         if is_conversational_answer is None:
             is_conversational_answer = self._is_conversational_answer
         if is_conversational_answer:
-            answer = self.conversational_answer(prompt, code, answer)
+            answer = self.conversational_answer(prompt, answer)
             self.log(f"Conversational answer: {answer}")
         return answer
+
+    def __call__(
+        self,
+        data_frame: pd.DataFrame,
+        prompt: str,
+        is_conversational_answer: bool = None,
+        show_code: bool = False,
+        anonymize_df: bool = True,
+        use_error_correction_framework: bool = True,
+    ) -> str:
+        """Run the LLM with the given prompt"""
+        return self.run(
+            data_frame,
+            prompt,
+            is_conversational_answer,
+            show_code,
+            anonymize_df,
+            use_error_correction_framework,
+        )
+
+    def remove_unsafe_imports(self, code: str) -> str:
+        """Remove non-whitelisted imports from the code to prevent malicious code execution"""
+
+        tree = ast.parse(code)
+        new_body = [
+            node
+            for node in tree.body
+            if not (
+                isinstance(node, (ast.Import, ast.ImportFrom))
+                and any(alias.name not in WHITELISTED_LIBRARIES for alias in node.names)
+            )
+        ]
+        new_tree = ast.Module(body=new_body)
+        return astor.to_source(new_tree).strip()
+
+    def remove_df_overwrites(self, code: str) -> str:
+        """Remove df declarations from the code to prevent malicious code execution"""
+
+        tree = ast.parse(code)
+        new_body = [
+            node
+            for node in tree.body
+            if not (
+                isinstance(node, ast.Assign)
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == "df"
+            )
+        ]
+        new_tree = ast.Module(body=new_body)
+        return astor.to_source(new_tree).strip()
+
+    def clean_code(self, code: str) -> str:
+        """Clean the code to prevent malicious code execution"""
+
+        # TODO: avoid iterating over the code twice # pylint: disable=W0511
+        code = self.remove_unsafe_imports(code)
+        code = self.remove_df_overwrites(code)
+        return code
 
     def run_code(
         self,
         code: str,
-        df: pd.DataFrame,  # pylint: disable=W0613 disable=C0103
+        data_frame: pd.DataFrame,
         use_error_correction_framework: bool = True,
     ) -> str:
         # pylint: disable=W0122 disable=W0123 disable=W0702:bare-except
         """Run the code in the current context and return the result"""
 
+        # Get the code to run removing unsafe imports and df overwrites
+        code_to_run = self.clean_code(code)
+        self.last_run_code = code_to_run
+        self.log(
+            f"""
+Code running:
+```
+{code_to_run}
+```"""
+        )
+
         # Redirect standard output to a StringIO buffer
         with redirect_stdout(io.StringIO()) as output:
-            # Execute the code
             count = 0
-            code_to_run = code
             while count < self._max_retries:
                 try:
-                    exec(code_to_run)
+                    # Execute the code
+                    exec(
+                        code_to_run,
+                        {
+                            "pd": pd,
+                            "df": data_frame,
+                            "plt": plt,
+                            "__builtins__": {
+                                **{
+                                    builtin: __builtins__[builtin]
+                                    for builtin in WHITELISTED_BUILTINS
+                                },
+                            },
+                        },
+                    )
                     code = code_to_run
                     break
                 except Exception as e:  # pylint: disable=W0718 disable=C0103
@@ -184,29 +235,44 @@ Code generated:
                         raise e
 
                     count += 1
-                    error_correcting_instruction = self._error_correct_instruction.format(
-                        today_date=date.today(),
+                    error_correcting_instruction = CorrectErrorPrompt(
                         code=code,
                         error_returned=e,
-                        START_CODE_TAG=START_CODE_TAG,
-                        END_CODE_TAG=END_CODE_TAG,
                         question=self._original_instructions["question"],
                         df_head=self._original_instructions["df_head"],
                         num_rows=self._original_instructions["num_rows"],
                         num_columns=self._original_instructions["num_columns"],
                         rows_to_display=self._original_instructions["rows_to_display"],
                     )
-                    code_to_run = self._llm.generate_code(error_correcting_instruction, "")
+                    code_to_run = self._llm.generate_code(
+                        error_correcting_instruction, ""
+                    )
 
         captured_output = output.getvalue()
 
         # Evaluate the last line and return its value or the captured output
         lines = code.strip().split("\n")
         last_line = lines[-1].strip()
-        if last_line.startswith("print(") and last_line.endswith(")"):
-            last_line = last_line[6:-1]
+
+        pattern = r"^print\((.*)\)$"
+        match = re.match(pattern, last_line)
+        if match:
+            last_line = match.group(1)
+
         try:
-            return eval(last_line)
+            return eval(
+                last_line,
+                {
+                    "pd": pd,
+                    "df": data_frame,
+                    "__builtins__": {
+                        **{
+                            builtin: __builtins__[builtin]
+                            for builtin in WHITELISTED_BUILTINS
+                        },
+                    },
+                },
+            )
         except Exception:  # pylint: disable=W0718
             return captured_output
 

@@ -3,6 +3,7 @@
 
 # __pycache__
 __pycache__
+.pytest_cache
 
 # macOS
 .DS_Store
@@ -11,3 +12,14 @@ __pycache__
 build
 dist
 pandasai.egg-info
+
+#venv
+/venv
+.venv
+
+# command line
+/pandasai_cli.egg-info
+
+# pycharm
+.idea/
+.idea
