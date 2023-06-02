@@ -60,7 +60,7 @@ from .prompts.multiple_dataframes import MultipleDataframesPrompt
 
 
 # pylint: disable=too-many-instance-attributes disable=too-many-arguments
-class PandasAIi:
+class PandasAI:
     """PandasAI is a wrapper around a LLM to make dataframes conversational.
 
 
