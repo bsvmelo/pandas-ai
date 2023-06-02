@@ -1,4 +1,35 @@
-""" Driver code for the CLI tool """
+""" Driver code for the CLI tool
+Pai is the command line tool designed to provide a convenient way to interact with PandasAI
+through a command line interface (CLI).
+
+```
+pai [OPTIONS]
+```
+Options:
+
+- **-d, --dataset**: The file path to the dataset.
+- **-t, --token**: Your HuggingFace or OpenAI API token, if no token provided pai will pull
+from the `.env` file.
+- **-m, --model**: Choice of LLM, either `openai`, `open-assistant`, or `starcoder`.
+- **-p, --prompt**: Prompt that PandasAI will run.
+
+To view a full list of available options and their descriptions, run the following command:
+
+```
+pai --help
+
+```
+
+Example:
+    ```
+    pai -d "~/pandasai/example/data/Loan payments data.csv" -m "openai"
+    -p "How many loans are from men and have been paid off?"
+
+    ```
+
+> Should result in the same output as the `from_csv.py` example.
+
+"""
 import os
 import click
 import pandas as pd
@@ -6,11 +37,12 @@ from pandasai import PandasAI
 from pandasai.llm.openai import OpenAI
 from pandasai.llm.open_assistant import OpenAssistant
 from pandasai.llm.starcoder import Starcoder
+from pandasai.llm.google_palm import GooglePalm
 
 @click.command()
 @click.option('-d', '--dataset', type=str, required=True, help='The dataset to use.')
 @click.option('-t', '--token', type=str, required=False, default=None, help='The API token to use.')
-@click.option('-m', '--model', type=click.Choice(['openai', 'open-assistant', 'starcoder']),
+@click.option('-m', '--model', type=click.Choice(['openai', 'open-assistant', 'starcoder', 'palm']),
               required=True, help='The type of model to use.')
 @click.option('-p', '--prompt', type=str, required=True, help='The prompt to use.')
 def main(dataset: str, token: str, model: str, prompt: str) -> None:
@@ -66,9 +98,12 @@ def main(dataset: str, token: str, model: str, prompt: str) -> None:
     elif model == 'starcoder':
         llm = Starcoder(api_token = token)
 
+    elif model == 'palm':
+        llm = GooglePalm(api_key = token)
+
     try:
         pandas_ai = PandasAI(llm, verbose=True)
-        response = pandas_ai.run(df, prompt)
+        response = pandas_ai(df, prompt)
         print(response)
 
     except Exception as e: # pylint: disable=W0718 disable=C0103
