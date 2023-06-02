@@ -1,5 +1,8 @@
 """
 Constants used in the pandasai package.
+
+It includes Start & End Code tags, Whitelisted Python Packages and While List Builtin Methods.
+
 """
 
 START_CODE_TAG = "<startCode>"
@@ -72,4 +75,11 @@ WHITELISTED_BUILTINS = [
     "type",
     "vars",
     "zip",
+]
+WHITELISTED_OPTIONAL_LIBRARIES = [
+    "sklearn",
+    "statsmodels",
+    "seaborn",
+    "plotly",
+    "ggplot",
 ]
