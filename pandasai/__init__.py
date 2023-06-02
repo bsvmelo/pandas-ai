@@ -53,7 +53,7 @@ from .helpers.notebook import Notebook
 from .helpers.save_chart import add_save_chart
 from .llm.base import LLM
 from .prompts.correct_error_prompt import CorrectErrorPrompt
-#from .prompts.correct_multiples_prompt import CorrectMultipleDataframesErrorPrompt
+from .prompts.correct_multiples_prompt import CorrectMultipleDataframesErrorPrompt
 from .prompts.generate_python_code import GeneratePythonCodePrompt
 from .prompts.generate_response import GenerateResponsePrompt
 from .prompts.multiple_dataframes import MultipleDataframesPrompt
