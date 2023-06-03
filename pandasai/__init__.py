@@ -190,7 +190,7 @@ class PandasAI:
 
         """
 
-        self.log(f"Running PandasAI with {self._llm.type} LLMmm with model {self._llm._api_url} ...")
+        self.log(f"Running PandasAI with {self._llm.type} LLMmm ...")
 
         try:
             rows_to_display = 0 if self._enforce_privacy else 5
