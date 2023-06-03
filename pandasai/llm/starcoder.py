@@ -30,7 +30,8 @@ class Starcoder(HuggingFaceLLM):
     """
 
     api_token: str
-    _api_url: str = "https://api-inference.huggingface.co/models/bigcode/starcoder"
+    #_api_url: str = "https://api-inference.huggingface.co/models/bigcode/starcoder"
+    _api_url: str = "https://api-inference.huggingface.co/models/google/flan-t5-base"
    # _api_url: str = "https://api-inference.huggingface.co/models/tiiuae/falcon-7b"
     _max_retries: int = 5
 
